@@ -50,8 +50,8 @@ final class PrerequisitesTests: XCTestCase {
         let required = Prerequisites.items(harnesses: Self.bothHarnesses).filter(\.isRequired)
         XCTAssertTrue(required.contains(.tmux))
         XCTAssertTrue(required.contains(.anthropicKey))
-        // Joined them 13 Sep, when the row could finally fix itself.
-        XCTAssertTrue(required.contains(.hub))
+        // Cloud sync is optional for local sessions.
+        XCTAssertFalse(required.contains(.hub))
         XCTAssertFalse(required.contains(.elevenLabsKey))
         XCTAssertFalse(required.contains(.assemblyAIKey))
     }
@@ -117,15 +117,14 @@ final class PrerequisitesTests: XCTestCase {
 
     // MARK: - the hub
 
-    /// The hub is where the work goes now, and the row can fix itself since
-    /// the connect flow landed, so an unconnected Mac does not finish setup.
-    func testAnUnconnectedHubHoldsTheDoor() {
+    /// A local session with direct credentials needs no cloud account.
+    func testAnUnconnectedHubAllowsLocalSetup() {
         let states = Prerequisites.snapshot(probes(hub: nil))
         let row = state(states, .hub)
         XCTAssertFalse(row.satisfied)
         XCTAssertTrue(row.detail.contains("not connected"), row.detail)
-        XCTAssertFalse(Prerequisites.allRequiredSatisfied(states),
-                       "first run is not finished on a Mac that mirrors nowhere")
+        XCTAssertTrue(Prerequisites.allRequiredSatisfied(states),
+                      "local setup must work without a hub account")
     }
 
     /// A revoked key is not a green row with bad news in its text.

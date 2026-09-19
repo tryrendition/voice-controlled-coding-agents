@@ -175,11 +175,8 @@ public enum Prerequisites {
         /// there for why.
         public var isRequired: Bool {
             switch self {
-            // The hub joined the required rows on 13 Sep, when the connect
-            // flow landed and a new machine could finally satisfy it by
-            // pressing the button on the row. Before that it was optional for
-            // an honest reason: nothing on this screen could make it green.
-            case .tmux, .hooks, .anthropicKey, .hub: return true
+            // Local sessions work without a cloud account.
+            case .tmux, .hooks, .anthropicKey: return true
             // OpenAI and the providers are optional for the same honest reason
             // ElevenLabs is: without OpenAI a streaming failure costs the
             // transcript rather than the app, and a machine that drives no
@@ -189,7 +186,7 @@ public enum Prerequisites {
             // Credits are optional for the same reason: a Mac on its own key
             // is a Mac using the product as it always has. The row's amber
             // is about a Mac that WAS on credits and fell off them.
-            case .elevenLabsKey, .assemblyAIKey, .openAIKey, .provider, .credits: return false
+            case .hub, .elevenLabsKey, .assemblyAIKey, .openAIKey, .provider, .credits: return false
             }
         }
 
@@ -509,7 +506,7 @@ public enum Prerequisites {
                                  attention: !hub.connected)
                 }
                 return State(item: item, satisfied: false,
-                             detail: "not connected. Sign in and your agents' pages and turns appear in the hub")
+                             detail: "not connected — optional. Local agents work without signing in")
             case .credits:
                 let standing = credits
                 if standing.isOnCredits {
