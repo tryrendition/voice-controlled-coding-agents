@@ -59,6 +59,11 @@ BUNDLE_ID="${VD_BUNDLE_ID:-com.robertnowell.voice-dispatch}"
 APP_CHANNEL="${VD_APP_CHANNEL:-production}"
 UPDATES_ENABLED="${VD_UPDATES_ENABLED:-true}"
 DATABASE_SCHEMA_VERSION="${VD_DATABASE_SCHEMA_VERSION:-18}"
+# Local development signatures have no Apple Team ID for embedded frameworks.
+APP_ENTITLEMENTS=TranquilityBase.entitlements
+if [ "$APP_CHANNEL" = development ]; then
+  APP_ENTITLEMENTS=TranquilityBaseDev.entitlements
+fi
 URL_SCHEMES="${VD_URL_SCHEMES:-tranquilitybase voicedispatch}"
 
 case "$UPDATES_ENABLED" in
@@ -402,7 +407,7 @@ if [ -z "$IDENTITY" ]; then
   echo "   Retry the identity with: scripts/make-signing-identity.sh"
   sparkle_sign "$APP_DIR" - --timestamp=none
   codesign --force --sign - --identifier "$BUNDLE_ID" \
-    --entitlements TranquilityBase.entitlements \
+    --entitlements "$APP_ENTITLEMENTS" \
     --options runtime --timestamp=none "$APP_DIR"
 else
   # --entitlements is not optional here. With the hardened runtime enabled, a
@@ -412,7 +417,7 @@ else
   # Nested first, outer last, never --deep: see scripts/lib/sparkle.sh.
   sparkle_sign "$APP_DIR" "$IDENTITY" --timestamp=none
   codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" \
-    --entitlements TranquilityBase.entitlements \
+    --entitlements "$APP_ENTITLEMENTS" \
     --options runtime --timestamp=none "$APP_DIR"
   echo "signed as: $IDENTITY"
 fi
