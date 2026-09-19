@@ -3134,6 +3134,23 @@ final class StatusHUD: NSObject {
 
         // The strip's bottom rule, under "AGENTS ⚙".
         waitingRows.addArrangedSubview(hairline(StateLegend.Palette.hairline))
+        // Manager mode (19 Sep): voice only. The orb takes the grid's place
+        // and the only door left is the one that turns it off; NEW AGENT and
+        // PAST AGENTS are what the voice is for. The fleet is still there,
+        // reached by speaking, and the rows come back when the manager stops.
+        if managerOn {
+            waitingRows.addArrangedSubview(managerOrb)
+            managerOrb.widthAnchor.constraint(equalToConstant: Self.gridWidth).isActive = true
+            waitingRows.addArrangedSubview(hairline(StateLegend.Palette.hairlineSoft))
+            let stopRow = PlacardRowView(
+                width: Self.gridWidth, target: self,
+                title: StateLegend.managerOffTitle, glyph: "■", action: #selector(managerRowTapped))
+            waitingRows.addArrangedSubview(stopRow)
+            stopRow.widthAnchor.constraint(equalToConstant: Self.gridWidth).isActive = true
+            waitingRows.addArrangedSubview(hairline(StateLegend.Palette.hairline))
+            Permissions.log("grid: manager mode, orb in place of \(face.sessionRows.count) rows")
+            return
+        }
         let shown = Self.gridRows(face.sessionRows)
         // ONE callsign column (ruled 05 Aug): sized to the widest callsign on
         // show, capped at 38% of the grid. Per-row widths made every name
@@ -3198,6 +3215,13 @@ final class StatusHUD: NSObject {
             trailing: (StateLegend.pastAgentsTitle, "↺", #selector(pastAgentsRowTapped)))
         waitingRows.addArrangedSubview(newRow)
         newRow.widthAnchor.constraint(equalToConstant: Self.gridWidth).isActive = true
+        waitingRows.addArrangedSubview(hairline(StateLegend.Palette.hairlineSoft))
+        // The manager's door (19 Sep): one placard row, both halves toggle it.
+        let managerRow = PlacardRowView(
+            width: Self.gridWidth, target: self,
+            title: StateLegend.managerOnTitle, glyph: "◯", action: #selector(managerRowTapped))
+        waitingRows.addArrangedSubview(managerRow)
+        managerRow.widthAnchor.constraint(equalToConstant: Self.gridWidth).isActive = true
         // The key line's top rule; the hint label follows in the outer stack.
         waitingRows.addArrangedSubview(hairline(StateLegend.Palette.hairline))
 
@@ -3226,6 +3250,31 @@ final class StatusHUD: NSObject {
 
     /// Wired by the app onto SessionLauncher.launch().
     var onNewSession: (() -> Void)?
+
+    // MARK: Manager mode (19 Sep)
+
+    /// Whether the orb is on the grid. Flipped by the app when the child
+    /// starts or ends; the grid repaints on the next idle render.
+    var managerOn = false
+    /// One globe, always. The dotted sphere is the manager's face; only its
+    /// colour changes (green while you talk, amber while something speaks).
+    static let orbState = "searching"
+    lazy var managerOrb = ManagerOrbView(frame: .zero)
+    var onManagerToggle: (() -> Void)?
+
+    func setManager(on: Bool) {
+        managerOn = on
+        managerOrb.set(Self.orbState, line: on ? "listening" : "off")
+        if case .idle = state { render() }
+    }
+
+    func setManagerState(_ orbState: String, line: String, mood: String = "") {
+        managerOrb.set(orbState, line: line, mood: mood)
+    }
+
+    @objc nonisolated private func managerRowTapped() {
+        MainActor.assumeIsolated { onManagerToggle?() }
+    }
 
     /// Wired by the app: build the list and show it.
     var onOpenPastAgents: (() -> Void)?
