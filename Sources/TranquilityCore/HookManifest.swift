@@ -631,7 +631,7 @@ public enum HookManifest {
         // not being installed: no lamps, no announcements, nothing.
         switch approval(for: harness) {
         case .notRequired, .granted: return nil
-        case .pending: return "installed, awaiting approval"
+        case .pending: return "installed; review and trust in Codex with /hooks"
         case .unknown:
             return "cannot read "
                 + (harness.approvalConfigURL?.lastPathComponent ?? "config")
@@ -665,9 +665,9 @@ public enum HookManifest {
         case .granted:
             return nil
         case .pending:
-            return "open a \(harness.label) session and choose "
-                + "\u{201C}Trust all and continue\u{201D} when it asks about hooks. "
-                + "Once, and it covers every session after it."
+            return "open a \(harness.label) terminal session, type /hooks, "
+                + "then review and trust the Tranquility Base hooks from "
+                + harness.settingsURL.path
         case .unknown:
             return "could not read \(harness.label)'s config to see whether "
                 + "the hooks are approved"
