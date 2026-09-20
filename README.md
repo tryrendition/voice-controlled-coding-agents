@@ -118,6 +118,14 @@ Application Support data and is not daily dogfood.
 
 `tbase new [dir]` starts a fresh session in its own Terminal window.
 
+### Codex hook approval
+
+After wiring Codex hooks, open a Codex CLI session and enter `/hooks`.
+Review and trust the Tranquility Base entries from `~/.codex/hooks.json`.
+New or changed hook definitions need review before Codex runs them. The setup
+button installs the hooks and shows this next step; it does not approve them.
+See the [Codex hook documentation](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks).
+
 ### Permissions
 
 First run opens a checklist; each row's **Grant** button either prompts or
