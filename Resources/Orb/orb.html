@@ -2,10 +2,11 @@
 <html data-theme="dark"><head><meta charset="utf-8">
 <style>
   html,body{margin:0;background:transparent;overflow:hidden}
-  body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font:11px/1.3 -apple-system,"Helvetica Neue",sans-serif;color:rgba(255,255,255,.72);-webkit-font-smoothing:antialiased}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font:12px/1.35 -apple-system,"Helvetica Neue",sans-serif;color:rgba(255,255,255,.72);-webkit-font-smoothing:antialiased}
   #wrap{position:relative;width:64px;height:64px}
   canvas{display:block;width:64px;height:64px}
-  #line{margin-top:8px;max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.02em}
+  #line{margin-top:8px;max-width:330px;text-align:center;letter-spacing:.02em;line-height:1.3;
+        display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 </style></head>
 <body><div id="wrap"><canvas id="orb" role="img" aria-label="Tranquility"></canvas></div><div id="line">Tranquility · listening</div>
 <script>
@@ -602,5 +603,5 @@ window.Orb = {MODE_DRAWS: Ct, MODE_FRAMES: vt, STATE_TO_MODE: Ot, finalizeFrame:
     if (line !== undefined) document.getElementById("line").textContent = line;
     if (!raf) frame();
   };
-  window.setOrb("searching");
+  window.setOrb("breathing", "connecting");
 </script></body></html>

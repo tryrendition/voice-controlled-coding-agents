@@ -10,12 +10,40 @@ import TranquilityCore
 /// sends, or types; it is the ⌃⌃ ladder's speaking half, reached by URL.
 extension AppDelegate {
 
-    /// Speak `spoken` as the session would, and show it on the card. The same
-    /// sequence the ladder uses: stop what is playing, supersede any armed
-    /// announcement, then speak with the session's voice pair.
+    /// A session id, or the unique session the prefix names. The manager
+    /// reads ids from JSON and often keeps only the first eight characters.
+    func resolveSession(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        if raw.count >= 32 { return raw }
+        return (try? store?.sessionId(matching: raw)) ?? raw
+    }
+
+    /// Speak `spoken` as the session would. With the manager on, the orb stays
+    /// on the grid and the line under it says who is speaking; the card is for
+    /// hands. Otherwise the same sequence the ladder uses: stop what is
+    /// playing, supersede any armed announcement, show the card, speak.
     @MainActor
     func speakForManager(session: String, spoken: SanitizedSpokenText, placard: String) {
         guard let coordinator else { return }
+        Permissions.log("manager: speaking \(placard) for \(session.prefix(8)): \(spoken.text.prefix(200))")
+        if managerIsOn {
+            returnToGridWork?.cancel()
+            let previous = announceTask
+            announceTask = Task { @MainActor in
+                coordinator.speech.stop()
+                previous?.cancel()
+                _ = await previous?.value
+                guard !Task.isCancelled else { return }
+                // The words themselves go under the orb, and stay there after the
+                // voice stops: what was said is what you want to read.
+                hud.setManagerState(StatusHUD.orbState, line: spoken.text, mood: "speaking")
+                let voices = coordinator.voices(for: session)
+                _ = await coordinator.speech.speak(
+                    spoken, voice: voices.cloud, systemVoice: voices.system, onWord: { _ in })
+                hud.setManagerState(StatusHUD.orbState, line: spoken.text)
+            }
+            return
+        }
         returnToGridWork?.cancel()
         let previous = announceTask
         announceTask = Task { @MainActor in
@@ -36,7 +64,6 @@ extension AppDelegate {
                 cwd: event?.cwd ?? live?.cwd,
                 eventId: session,
                 placard: "\(StateLegend.Glyph.speaking) \(placard)")
-            Permissions.log("manager: speaking \(placard) for \(session.prefix(8))")
             let voices = coordinator.voices(for: session)
             _ = await coordinator.speech.speak(
                 spoken, voice: voices.cloud, systemVoice: voices.system, onWord: { _ in })
@@ -67,18 +94,28 @@ extension AppDelegate {
             return
         }
         managerTransport = transport
-        hud.setManager(on: true)
+        hud.setManager(on: true)  // breathing, "connecting", until the child says ready
         Permissions.log("manager: started \(argv.joined(separator: " "))")
         managerTask = Task { @MainActor [weak self] in
             for await line in transport.lines() {
                 guard let self, let event = ManagerEvent.parse(line) else { continue }
                 self.handle(event)
             }
-            // The child ended, by us or by itself. Either way the lamp goes out.
-            self?.hud.setManager(on: false)
-            self?.managerTransport = nil
-            Permissions.log("manager: child ended")
-            self?.rebuildMenu()
+            guard let self else { return }
+            let status = transport.exitStatus
+            Permissions.log("manager: child ended (exit \(status.map(String.init) ?? "?"))")
+            // 75 is the child's own "reload me": its source changed under it.
+            // Restart in place; the orb never drops. Anything else is the end.
+            if status == 75, self.managerTransport === transport {
+                self.managerTransport = nil
+                self.hud.setManagerState(StatusHUD.orbState, line: "reloading")
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                self.startManager()
+                return
+            }
+            self.hud.setManager(on: false)
+            self.managerTransport = nil
+            self.rebuildMenu()
         }
     }
 
@@ -101,16 +138,26 @@ extension AppDelegate {
         switch e.event {
         // The thinking orb (composing) is the resting face. Hearing you lights
         // the gradient; addressed switches to solving; speaking weaves.
+        case .ready:
+            // The mic-open cue plays now, when it is true: the pipeline is up.
+            Earcons.acknowledge(.listening)
+            hud.setManagerState(StatusHUD.orbState, line: "listening")
         case .hearing:
             hud.setManagerState(StatusHUD.orbState, line: "hearing you", mood: "hearing")
         case .listening:
-            hud.setManagerState(StatusHUD.orbState, line: "listening")
+            break  // silent on a turn: whatever was last said stays on the panel
         case .addressed:
             hud.setManagerState(StatusHUD.orbState, line: Self.intentLine(e.intent))
         case .speaking:
-            hud.setManagerState(StatusHUD.orbState, line: e.voice == "agent" ? "the agent is speaking" : "speaking", mood: "speaking")
+            managerLastLine = e.text ?? (e.voice == "agent" ? "the agent is speaking" : "speaking")
+            hud.setManagerState(StatusHUD.orbState, line: managerLastLine, mood: "speaking")
+        case .reloading:
+            hud.setManagerState(StatusHUD.orbState, line: "reloading")
+        case .quiet:
+            // Voice over: colour back to rest, the last words stay readable.
+            hud.setManagerState(StatusHUD.orbState, line: managerLastLine == "speaking" ? "listening" : managerLastLine)
         case .stage:
-            hud.setManagerState(StatusHUD.orbState, line: "on stage: \(e.goal ?? e.project ?? "")")
+            hud.setManagerState(StatusHUD.orbState, line: "on stage: \(e.name ?? e.goal ?? e.project ?? "")")
         case .earcon:
             if let name = e.name, let cue = EarconGate.Cue(rawValue: name) { Earcons.acknowledge(cue) }
         case .tool:

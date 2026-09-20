@@ -14,6 +14,8 @@ import Foundation
 /// emits the same lines, and the orb does not know the difference.
 public struct ManagerEvent: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
+        /// The pipeline is up and the microphone is open: listening for real.
+        case ready
         /// The user started speaking; nothing decided yet.
         case hearing
         /// A finished turn the manager heard and stayed silent on.
@@ -22,6 +24,10 @@ public struct ManagerEvent: Codable, Equatable, Sendable {
         case addressed
         /// The manager, or a session on its behalf, is about to speak.
         case speaking
+        /// The manager's own voice stopped.
+        case quiet
+        /// The child's source changed; it is about to exit 75 for a restart.
+        case reloading
         /// A session took the stage.
         case stage
         /// The manager asks the app to play a cue by name.

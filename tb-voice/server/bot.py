@@ -6,6 +6,7 @@ Compute (tools via tbase) -> Gradium TTS. Design: ../docs/design.md.
 Run with keys injected from the Keychain: ./run.sh
 """
 
+import asyncio
 import os
 
 from dotenv import load_dotenv
@@ -42,20 +43,23 @@ from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import (
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
+from llm import RecordedLLMService
 from manager import JevClient, Manager
+from mute import WhileBotSpeaksMuteStrategy
 from prompt import SYSTEM
 from tools import SCHEMAS
+from tts import SpokenGradiumTTSService
 
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> None:
     logger.info("Starting tb-voice")
 
     stt = GradiumSTTService(api_key=os.environ["GRADIUM_API_KEY"])
-    tts = GradiumTTSService(
+    tts = SpokenGradiumTTSService(
         api_key=os.environ["GRADIUM_API_KEY"],
         settings=GradiumTTSService.Settings(voice=os.getenv("GRADIUM_VOICE_ID") or None),
     )
-    llm = OpenAILLMService(
+    llm = RecordedLLMService(
         api_key=os.environ["GC_API_KEY"],
         base_url=os.getenv("GC_BASE_URL", "https://api.generalcompute.com/v1"),
         settings=OpenAILLMService.Settings(
@@ -70,6 +74,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         context,
         user_params=LLMUserAggregatorParams(
             vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+            user_mute_strategies=[WhileBotSpeaksMuteStrategy()],
             # A turn starts on words, not on VAD: in a loud room VAD fired 300 ms into
             # every answer and cancelled it before TTS. Two words of transcript start a
             # turn; noise and one-word backchannels do not.
@@ -122,6 +127,15 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
     )
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
     await runner.add_workers(worker)
+
+    if os.getenv("TB_HOST") == "app":
+        from events import emit
+        from reload import watch
+
+        async def _on_change(files):
+            await emit(None, "reloading", text=", ".join(files))
+
+        asyncio.get_event_loop().create_task(watch(_on_change))
 
     try:
         @transport.event_handler("on_client_connected")

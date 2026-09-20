@@ -62,6 +62,7 @@ extension AppDelegate {
             case let .reply(s):      session = s; ref = nil
             case let .rung(s, _):    session = s; ref = nil
             case let .say(s, _):     session = s; ref = nil
+            case .mute:              session = nil; ref = nil
             case .show, .connect, .new, .unknown: session = nil; ref = nil
             }
             Permissions.log("deeplink: \(action) session=\(session?.prefix(8) ?? "-")")
@@ -77,19 +78,33 @@ extension AppDelegate {
             case "discuss":
                 discuss(session: session, ref: ref)
             case "hear":
-                announceNext(only: session)
+                // Hands-free: the orb stays and the session speaks its stored brief;
+                // the card is for hands. Prefixes resolve here, since the manager
+                // often has only the first eight characters of an id.
+                if managerIsOn, let session = resolveSession(session), let store,
+                   let announcement = try? ManagerJSON.announcement(store: store, sessionId: session) {
+                    speakForManager(session: session, spoken: announcement.spoken, placard: "HEAR")
+                } else {
+                    announceNext(only: resolveSession(session))
+                }
             case "rung":
                 // The manager asking for one rung of the ladder, in the
                 // session's own voice. Speak-only, like `hear`.
-                guard case let .rung(_, kind) = parsed, let session, let kind,
+                guard case let .rung(_, kind) = parsed, let session = resolveSession(session), let kind,
                       let store, let rung = try? ManagerJSON.rung(store: store, sessionId: session, kind: kind)
                 else { hud.showResult("That rung is empty for this turn."); break }
                 speakForManager(session: session, spoken: rung.spoken, placard: rung.kind.rawValue)
+            case "mute":
+                // Stop the voice, whoever is speaking. Nothing else changes.
+                announceTask?.cancel()
+                coordinator?.speech.stop()
+                Permissions.log("manager: mute")
+                if managerIsOn { hud.setManagerState(StatusHUD.orbState, line: "listening") }
             case "say":
                 // The manager handing the session a line to say in its own
                 // voice: a custom answer about its work. Capped and sanitized;
                 // it reaches the synthesizer and nothing else.
-                guard case let .say(_, text) = parsed, let session, let text else { break }
+                guard case let .say(_, text) = parsed, let session = resolveSession(session), let text else { break }
                 let spoken = SpokenTextSanitizer().sanitize(text, allowing: [])
                 speakForManager(session: session, spoken: spoken, placard: "SAY")
             case "reply":

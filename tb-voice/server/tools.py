@@ -9,7 +9,7 @@ import os
 
 from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
-from pipecat.frames.frames import FunctionCallResultProperties
+from pipecat.frames.frames import FunctionCallResultProperties, TTSSpeakFrame
 
 from events import line
 
@@ -54,11 +54,23 @@ async def brief(params):
     await params.result_callback(_json_or_text(code, out))
 
 
+SENT_LINE = os.getenv("TB_SENT_LINE", "Sent. What's next?")
+
+
 async def send_message(params):
     a = params.arguments
-    code, out = await _run(TBASE, "send", a["session"], a["text"])
-    meaning = {0: "confirmed", 2: "not dispatched", 3: "deferred", 4: "ambiguous target", 5: "failed"}
-    await params.result_callback({"exit": code, "meaning": meaning.get(code, "unknown"), "text": out[-500:]})
+    sid = await _full_id(a["session"])
+    code, out = await _run(TBASE, "send", sid, a["text"])
+    meaning = {0: "sent", 2: "not dispatched", 3: "deferred", 4: "ambiguous target", 5: "failed"}
+    line("tool", argv=["tbase", "send", sid[:8]], exit=code, meaning=meaning.get(code, "unknown"))
+    if code == 0:
+        # The sent cue and one fixed line; the model is not asked to narrate a send.
+        line("earcon", name="dispatched")
+        line("speaking", voice="manager", text=SENT_LINE)
+        await params.llm.push_frame(TTSSpeakFrame(SENT_LINE))
+        await params.result_callback({"exit": 0, "meaning": "sent"}, properties=SILENT)
+    else:
+        await params.result_callback({"exit": code, "meaning": meaning.get(code, "unknown"), "text": out[-300:]})
 
 
 async def start_agent(params):
@@ -71,11 +83,24 @@ async def start_agent(params):
     argv.append("--wait-live")
     code, out = await _run(*argv, timeout=60)
     reg = next((ln.split(":", 1)[1].strip() for ln in out.splitlines() if ln.startswith("registered:")), None)
-    await params.result_callback({"exit": code, "session": reg, "text": out[-500:]})
+    # The id is for tools, never for speech: the model gets "started" and the project.
+    await params.result_callback({"exit": code, "started": reg is not None,
+                                  "project": (a.get("directory") or "").rstrip("/").split("/")[-1] or "the default project",
+                                  "session": reg})
+
+
+async def _full_id(sid: str) -> str:
+    """The manager keeps eight-character ids; the app's doors want the whole thing."""
+    if len(sid) >= 32:
+        return sid
+    code, out = await _run(TBASE, "targets", "--json")
+    data = _json_or_text(code, out).get("data") or []
+    hits = [t["sessionId"] for t in data if isinstance(t, dict) and t.get("sessionId", "").startswith(sid)]
+    return hits[0] if len(hits) == 1 else sid
 
 
 async def invite_to_speak(params):
-    sid = params.arguments["session"]
+    sid = await _full_id(params.arguments["session"])
     code, out = await _run("open", f"{SCHEME}://hear?session={sid}")
     await params.result_callback({"exit": code, "status": "the session is speaking"}, properties=SILENT)
 
@@ -85,7 +110,8 @@ async def say_as_session(params):
     from urllib.parse import quote
     a = params.arguments
     text = " ".join(a["text"].split())[:600]
-    code, out = await _run("open", f"{SCHEME}://say?session={a['session']}&text={quote(text)}")
+    sid = await _full_id(a["session"])
+    code, out = await _run("open", f"{SCHEME}://say?session={sid}&text={quote(text)}")
     await params.result_callback({"exit": code, "status": "the session is speaking"}, properties=SILENT)
 
 
